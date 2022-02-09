@@ -20,43 +20,46 @@ def stdev(data):
     var = variance(data)
     std_dev = math.sqrt(var)
     return round(std_dev,2)
-# subroutines for stats generation & reporting:
-def generateStats(dictonary):
-    dictonary["stats"] = {}
+
+# subroutines for stats generation, takes in a dictionary, 
+# returns the same dictionary with stats added.
+def generateStats(dictionary):
+    dictionary["stats"] = {}
     eventList = []
     eventTotal = []
     eventMean = []
-    for event in dictonary["events"]:
-        dictonary["stats"][event] = {}
-        dictonary["stats"][event]["executions"] = len(dictonary["events"][event])
-        dictonary["stats"][event]["mean_time"] = mean(dictonary["events"][event])
-        dictonary["stats"][event]["std_dev"] = stdev(dictonary["events"][event])
-        dictonary["stats"][event]["min_time"] = min(dictonary["events"][event])
-        dictonary["stats"][event]["max_time"] = max(dictonary["events"][event])
-        dictonary["stats"][event]["total_time"] = sum(dictonary["events"][event])/1000
+    for event in dictionary["events"]:
+        dictionary["stats"][event] = {}
+        dictionary["stats"][event]["executions"] = len(dictionary["events"][event])
+        dictionary["stats"][event]["mean_time"] = mean(dictionary["events"][event])
+        dictionary["stats"][event]["std_dev"] = stdev(dictionary["events"][event])
+        dictionary["stats"][event]["min_time"] = min(dictionary["events"][event])
+        dictionary["stats"][event]["max_time"] = max(dictionary["events"][event])
+        dictionary["stats"][event]["total_time"] = sum(dictionary["events"][event])/1000
         eventList.append(event)
-        eventTotal.append(sum(dictonary["events"][event])/1000)
-        eventMean.append(mean(dictonary["events"][event]))
-    dictonary["stats"]["eventsSortedByMean"] = [x for _,x in sorted(zip(eventMean,eventList),reverse=True)]
-    dictonary["stats"]["eventsSortedByTotal"] = [x for _,x in sorted(zip(eventTotal,eventList),reverse=True)]
-    return dictonary
-def reportStats(dictonary):
-    sectionHeading = " Data for Occurrance Type: " + dictonary["occurrence_type"] + " "
+        eventTotal.append(sum(dictionary["events"][event])/1000)
+        eventMean.append(mean(dictionary["events"][event]))
+    dictionary["stats"]["eventsSortedByMean"] = [x for _,x in sorted(zip(eventMean,eventList),reverse=True)]
+    dictionary["stats"]["eventsSortedByTotal"] = [x for _,x in sorted(zip(eventTotal,eventList),reverse=True)]
+    return dictionary
+
+def reportStats(dictionary):
+    sectionHeading = " Data for Occurrance Type: " + dictionary["occurrence_type"] + " "
     linePadding = ((80-len(sectionHeading))/2) * "="
     output = ("="*80) + "\n"
     output = output + linePadding + sectionHeading + linePadding + "\n"
     output = output + ("="*80) + "\n"
-    output = output + "Occurrences sorted by total time: " + ", ".join(dictonary["stats"]["eventsSortedByMean"]) + "\n\n"
-    output = output + "Occurrences sorted by mean time: " + ", ".join(dictonary["stats"]["eventsSortedByTotal"]) + "\n"
+    output = output + "Occurrences sorted by total time: " + ", ".join(dictionary["stats"]["eventsSortedByMean"]) + "\n\n"
+    output = output + "Occurrences sorted by mean time: " + ", ".join(dictionary["stats"]["eventsSortedByTotal"]) + "\n"
     output = output + "\n========================================\n"
-    for event in dictonary["stats"]["eventsSortedByMean"]:
-        executions = str(dictonary["stats"][event]["executions"])
-        mean_time  = str(dictonary["stats"][event]["mean_time"])
-        std_dev    = str(dictonary["stats"][event]["std_dev"])
-        min_time   = str(dictonary["stats"][event]["min_time"])
-        max_time   = str(dictonary["stats"][event]["max_time"])
-        total_time = str(dictonary["stats"][event]["total_time"])
-        output = output + "Type: " + dictonary["occurrence_type"] + "\tOccurrance: "+ event
+    for event in dictionary["stats"]["eventsSortedByMean"]:
+        executions = str(dictionary["stats"][event]["executions"])
+        mean_time  = str(dictionary["stats"][event]["mean_time"])
+        std_dev    = str(dictionary["stats"][event]["std_dev"])
+        min_time   = str(dictionary["stats"][event]["min_time"])
+        max_time   = str(dictionary["stats"][event]["max_time"])
+        total_time = str(dictionary["stats"][event]["total_time"])
+        output = output + "Type: " + dictionary["occurrence_type"] + "\tOccurrance: "+ event
         output = output + "\n\tExecution Count: " + executions
         output = output + "\n\tTotal Time: " + total_time + "ms"
         output = output + "\n\tMean Execution Time:\t" + mean_time + "us"
@@ -69,7 +72,7 @@ def reportStats(dictonary):
     return output
 
 # subroutine to parse occurrences into dictionaries
-def parseLogOccurrances(occurrenceType,occurrenceList):
+def parseLogOccurrences(occurrenceType,occurrenceList):
     ## Now we'll loop though the event list and look for exit events to match up.
     # Note that we need to keep track of our own index, so that once we find an exit event
     # we can reverse the order of the list and look for the next matching entry.
@@ -157,16 +160,18 @@ for line in rp_loglines.splitlines():
     if "RP_CMD_" in structure["occurrence_type"]:
         rp_cmds.append(structure)
 
-rp_event_durration = parseLogOccurrances("RP_EVENT",rp_events)
-rp_cmd_durration = parseLogOccurrances("RP_CMD",rp_cmds)
-rp_cmd_vm_durration = parseLogOccurrances("RP_CMD_VM",rp_cmds)
+# Parse the logs and create dictionaries of occurrence durrations
+rp_event_durration = parseLogOccurrences("RP_EVENT",rp_events)
+rp_cmd_durration = parseLogOccurrences("RP_CMD",rp_cmds)
+rp_cmd_vm_durration = parseLogOccurrences("RP_CMD_VM",rp_cmds)
+
+# Generate stats using the dictionaries and occurrence durrations
+rp_event_durration = generateStats(rp_event_durration)
+rp_cmd_durration = generateStats(rp_cmd_durration)
+rp_cmd_vm_durration = generateStats(rp_cmd_vm_durration)
 
 # Now time to report our findings.
-# again a wiser man would considate this and make a subroutine...
-rp_event_durration = generateStats(rp_event_durration)
 print(reportStats(rp_event_durration))
-rp_cmd_durration = generateStats(rp_cmd_durration)
 print(reportStats(rp_cmd_durration))
-rp_cmd_vm_durration = generateStats(rp_cmd_vm_durration)
 print(reportStats(rp_cmd_vm_durration))
 exit(0)
