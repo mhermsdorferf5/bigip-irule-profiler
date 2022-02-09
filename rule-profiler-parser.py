@@ -20,28 +20,104 @@ def stdev(data):
     var = variance(data)
     std_dev = math.sqrt(var)
     return round(std_dev,2)
+# subroutines for stats generation & reporting:
+def generateStats(dictonary):
+    dictonary["stats"] = {}
+    eventList = []
+    eventTotal = []
+    eventMean = []
+    for event in dictonary["events"]:
+        dictonary["stats"][event] = {}
+        dictonary["stats"][event]["executions"] = len(dictonary["events"][event])
+        dictonary["stats"][event]["mean_time"] = mean(dictonary["events"][event])
+        dictonary["stats"][event]["std_dev"] = stdev(dictonary["events"][event])
+        dictonary["stats"][event]["min_time"] = min(dictonary["events"][event])
+        dictonary["stats"][event]["max_time"] = max(dictonary["events"][event])
+        dictonary["stats"][event]["total_time"] = sum(dictonary["events"][event])/1000
+        eventList.append(event)
+        eventTotal.append(sum(dictonary["events"][event])/1000)
+        eventMean.append(mean(dictonary["events"][event]))
+    dictonary["stats"]["eventsSortedByMean"] = [x for _,x in sorted(zip(eventMean,eventList),reverse=True)]
+    dictonary["stats"]["eventsSortedByTotal"] = [x for _,x in sorted(zip(eventTotal,eventList),reverse=True)]
+    return dictonary
 def reportStats(dictonary):
-    output = "========================================\n"
-    for event in dictonary:
-        executions = str(len(dictonary[event]))
-        mean_time = str(mean(dictonary[event]))
-        std_dev = str(stdev(dictonary[event]))
-        min_time = str(min(dictonary[event]))
-        max_time = str(max(dictonary[event]))
-        total_time = str(sum(dictonary[event])/1000)
-        output = output + "COMMAND VM: "+ event + "\tCount: " + executions
+    sectionHeading = " Data for Occurrance Type: " + dictonary["occurrence_type"] + " "
+    linePadding = ((80-len(sectionHeading))/2) * "="
+    output = ("="*80) + "\n"
+    output = output + linePadding + sectionHeading + linePadding + "\n"
+    output = output + ("="*80) + "\n"
+    output = output + "Occurrences sorted by total time: " + ", ".join(dictonary["stats"]["eventsSortedByMean"]) + "\n\n"
+    output = output + "Occurrences sorted by mean time: " + ", ".join(dictonary["stats"]["eventsSortedByTotal"]) + "\n"
+    output = output + "\n========================================\n"
+    for event in dictonary["stats"]["eventsSortedByMean"]:
+        executions = str(dictonary["stats"][event]["executions"])
+        mean_time  = str(dictonary["stats"][event]["mean_time"])
+        std_dev    = str(dictonary["stats"][event]["std_dev"])
+        min_time   = str(dictonary["stats"][event]["min_time"])
+        max_time   = str(dictonary["stats"][event]["max_time"])
+        total_time = str(dictonary["stats"][event]["total_time"])
+        output = output + "Type: " + dictonary["occurrence_type"] + "\tOccurrance: "+ event
+        output = output + "\n\tExecution Count: " + executions
         output = output + "\n\tTotal Time: " + total_time + "ms"
-        output = output + "\n\tMean Execution Time:\t"+ mean_time + "us"
-        output = output + "\n\tStandard Deviation:\t" + std_dev 
-        output = output + "\n\tMax Execution Time:\t" + max_time 
-        output = output + "\n\tMin Execution Time:\t" + min_time
+        output = output + "\n\tMean Execution Time:\t" + mean_time + "us"
+        output = output + "\n\tStandard Deviation:\t"  + std_dev 
+        output = output + "\n\tMax Execution Time:\t"  + max_time 
+        output = output + "\n\tMin Execution Time:\t"  + min_time
         output = output + "\n========================================\n"
+    output = output + ("="*80) + "\n"
+    output = output + ("="*80) + "\n\n"
     return output
+
+# subroutine to parse occurrences into dictionaries
+def parseLogOccurrances(occurrenceType,occurrenceList):
+    ## Now we'll loop though the event list and look for exit events to match up.
+    # Note that we need to keep track of our own index, so that once we find an exit event
+    # we can reverse the order of the list and look for the next matching entry.
+    occurrence_index = 0
+    # durration dictionary, we store a list per event occurrence:
+    entryString = occurrenceType + "_ENTRY"
+    exitString = occurrenceType + "_EXIT"
+    rp_occurrence_durration = { "occurrence_type": occurrenceType }
+    rp_occurrence_durration["events"] = {}
+    for entry in occurrenceList:
+        # If it's an exit event...
+        if entry["occurrence_type"] == exitString:
+            open_occurrence_index = 0
+            open_events = []
+            # Now we need to search from our current index back in history to find the next open event.
+            # Create a range from our current index... (0 - currentIndex)
+            # Then reverse that, and start looping on that index counting down.
+            for index in reversed(range(occurrence_index)):
+                # Get the log/dict entry associated with this index:
+                open_entry = occurrenceList[index]
+    
+                # Check if the log/dict entry matches with our open event:
+                # The following should match: occurrence, tuples, flowid, tmm pid.
+                # but of course it needs to be the entry event:
+                if open_entry["occurrence_type"] == entryString and open_entry["occurrence"] == entry["occurrence"] \
+                and open_entry["local_tuple"] == entry["local_tuple"] and open_entry["remote_tuple"] == entry["remote_tuple"] \
+                and open_entry["flow_id"] == entry["flow_id"] and open_entry["tmm_pid"] == entry["tmm_pid"]:
+    
+                    # For matches, calculate the durration time:
+                    time = int(entry["timestamp"]) - int(open_entry["timestamp"])
+                    # Shove said durration time into our event durration dict/list:
+                    if str(open_entry["occurrence"]) in rp_occurrence_durration["events"].keys():
+                        # If the key already exists, then append:
+                        rp_occurrence_durration["events"][str(open_entry["occurrence"])].append(time)
+                    else:
+                        # otherwise, create the key & list, then append:
+                        rp_occurrence_durration["events"][str(open_entry["occurrence"])] = []
+                        rp_occurrence_durration["events"][str(open_entry["occurrence"])].append(time)
+                    # once we find the entry, we can break out and be done:
+                    break
+        # increment the index:
+        occurrence_index += 1
+    return(rp_occurrence_durration)
 
 # Grep command to get the log lines out of a file:
 # This should be a good bit faster than opening the log file and finding the RP log file entries within python.
-cmd_grep_rp_loglines='''/bin/grep -P "info tmm\[\d+\]: \d+,RP_" /var/log/ltm'''
-#cmd_grep_rp_loglines='''/bin/grep -P "info tmm\[\d+\]: \d+,RP_" /mnt/c/Users/hermsdorfer/ltm'''
+#cmd_grep_rp_loglines='''/bin/grep -P "info tmm\[\d+\]: \d+,RP_" /var/log/ltm'''
+cmd_grep_rp_loglines='''/bin/grep -P "info tmm\[\d+\]: \d+,RP_" /mnt/c/Users/hermsdorfer/ltm'''
 #cmd_grep_rp_loglines='''/bin/grep -P "HTTP_REQUEST.*10.1.1.11,58424,0,10.1.10.9,8443,0" /mnt/c/Users/hermsdorfer/ltm'''
 rp_loglines = subprocess.check_output(cmd_grep_rp_loglines, shell=True)
 
@@ -81,93 +157,16 @@ for line in rp_loglines.splitlines():
     if "RP_CMD_" in structure["occurrence_type"]:
         rp_cmds.append(structure)
 
-
-## Now we'll loop though the event list and look for exit events to match up.
-# Note that we need to keep track of our own index, so that once we find an exit event
-# we can reverse the order of the list and look for the next matching entry.
-events_index = 0
-# durration dictionary, we store a list per event occurrence:
-rp_event_durration = {}
-for entry in rp_events:
-    # If it's an exit event...
-    if entry["occurrence_type"] == "RP_EVENT_EXIT":
-        open_events_index = 0
-        open_events = []
-        # Now we need to search from our current index back in history to find the next open event.
-        # Create a range from our current index... (0 - currentIndex)
-        # Then reverse that, and start looping on that index counting down.
-        for index in reversed(range(events_index)):
-            # Get the log/dict entry associated with this index:
-            open_entry = rp_events[index]
-
-            # Check if the log/dict entry matches with our open event:
-            # The following should match: occurrence, tuples, flowid, tmm pid.
-            # but of course it needs to be the entry event:
-            if open_entry["occurrence_type"] == "RP_EVENT_ENTRY" and open_entry["occurrence"] == entry["occurrence"] \
-            and open_entry["local_tuple"] == entry["local_tuple"] and open_entry["remote_tuple"] == entry["remote_tuple"] \
-            and open_entry["flow_id"] == entry["flow_id"] and open_entry["tmm_pid"] == entry["tmm_pid"]:
-
-                # For matches, calculate the durration time:
-                time = int(entry["timestamp"]) - int(open_entry["timestamp"])
-                # Shove said durration time into our event durration dict/list:
-                if str(open_entry["occurrence"]) in rp_event_durration.keys():
-                    # If the key already exists, then append:
-                    rp_event_durration[str(open_entry["occurrence"])].append(time)
-                else:
-                    # otherwise, create the key & list, then append:
-                    rp_event_durration[str(open_entry["occurrence"])] = []
-                    rp_event_durration[str(open_entry["occurrence"])].append(time)
-                # once we find the entry, we can break out and be done:
-                break
-    # increment the index:
-    events_index += 1
-
-## Same same as above, but now for commands...
-# A wiser man would have created a generic subroutine...
-cmds_index = 0
-rp_cmd_durration = {}
-for entry in rp_cmds:
-    if entry["occurrence_type"] == "RP_CMD_EXIT":
-        for index in reversed(range(cmds_index)):
-            open_entry = rp_cmds[index]
-            if open_entry["occurrence_type"] == "RP_CMD_ENTRY" and open_entry["occurrence"] == entry["occurrence"] \
-            and open_entry["local_tuple"] == entry["local_tuple"] and open_entry["remote_tuple"] == entry["remote_tuple"] \
-            and open_entry["flow_id"] == entry["flow_id"] and open_entry["tmm_pid"] == entry["tmm_pid"]:
-                time = int(entry["timestamp"]) - int(open_entry["timestamp"])
-                if str(open_entry["occurrence"]) in rp_cmd_durration.keys():
-                    rp_cmd_durration[str(open_entry["occurrence"])].append(time)
-                else:
-                    rp_cmd_durration[str(open_entry["occurrence"])] = []
-                    rp_cmd_durration[str(open_entry["occurrence"])].append(time)
-                break
-    cmds_index += 1
-cmds_index = 0
-rp_cmd_vm_durration = {}
-for entry in rp_cmds:
-    if entry["occurrence_type"] == "RP_CMD_VM_EXIT":
-        for index in reversed(range(cmds_index)):
-            open_entry = rp_cmds[index]
-            if open_entry["occurrence_type"] == "RP_CMD_VM_ENTRY" and open_entry["occurrence"] == entry["occurrence"] \
-            and open_entry["local_tuple"] == entry["local_tuple"] and open_entry["remote_tuple"] == entry["remote_tuple"] \
-            and open_entry["flow_id"] == entry["flow_id"] and open_entry["tmm_pid"] == entry["tmm_pid"]:
-                time = int(entry["timestamp"]) - int(open_entry["timestamp"])
-                if str(open_entry["occurrence"]) in rp_cmd_vm_durration.keys():
-                    rp_cmd_vm_durration[str(open_entry["occurrence"])].append(time)
-                else:
-                    rp_cmd_vm_durration[str(open_entry["occurrence"])] = []
-                    rp_cmd_vm_durration[str(open_entry["occurrence"])].append(time)
-                break
-    cmds_index += 1
+rp_event_durration = parseLogOccurrances("RP_EVENT",rp_events)
+rp_cmd_durration = parseLogOccurrances("RP_CMD",rp_cmds)
+rp_cmd_vm_durration = parseLogOccurrances("RP_CMD_VM",rp_cmds)
 
 # Now time to report our findings.
 # again a wiser man would considate this and make a subroutine...
-print("========================================")
-print("============== Event Data ==============")
+rp_event_durration = generateStats(rp_event_durration)
 print(reportStats(rp_event_durration))
-print("\n========================================")
-print("============= Command Data =============")
+rp_cmd_durration = generateStats(rp_cmd_durration)
 print(reportStats(rp_cmd_durration))
-print("\n========================================")
-print("=========== Command VM Data ============")
+rp_cmd_vm_durration = generateStats(rp_cmd_vm_durration)
 print(reportStats(rp_cmd_vm_durration))
-
+exit(0)
